@@ -1,0 +1,49 @@
+name: CodeGuard Agent
+description: Review, test and auto-fix AI-written code on every pull request
+branding:
+  icon: shield
+  color: blue
+inputs:
+  path:
+    description: Directory to review
+    default: "."
+  fix:
+    description: Try verified auto-fixes (writes codeguard-fixes.patch)
+    default: "false"
+  fail-under:
+    description: Fail the job if the score is below this value
+    default: "0"
+  fail-on:
+    description: Fail if any finding is at/above this severity (low|medium|high|critical)
+    default: ""
+  anthropic-api-key:
+    description: Optional - enables AI review and AI fixes
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install CodeGuard
+      shell: bash
+      run: pip install "$ACTION_PATH"
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+    - name: Run CodeGuard
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        IN_PATH: ${{ inputs.path }}
+        IN_FIX: ${{ inputs.fix }}
+        IN_FAIL_UNDER: ${{ inputs.fail-under }}
+        IN_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        args=(review "$IN_PATH" --out codeguard-report --fail-under "$IN_FAIL_UNDER" --quiet)
+        [ "$IN_FIX" = "true" ] && args+=(--fix)
+        [ -n "$IN_FAIL_ON" ] && args+=(--fail-on "$IN_FAIL_ON")
+        set +e
+        codeguard "${args[@]}"
+        code=$?
+        [ -f codeguard-report/codeguard-report.md ] && cat codeguard-report/codeguard-report.md >> "$GITHUB_STEP_SUMMARY"
+        exit $code

@@ -1,0 +1,7 @@
+# CodeGuard config for this repository (dogfooding). Copy/adapt for your own projects.
+[codeguard]
+ignore_dirs = ["examples"]      # the demo app is intentionally vulnerable
+# disabled_rules = ["GEN001"]
+# fail_under = 70
+# fail_on = "high"
+# sandbox = "docker"
