@@ -50,7 +50,7 @@ export function scanSource(file: string, content: string): Finding[] {
           rule: "PY001",
           file,
           line: lineNum,
-          message: "eval() on dynamic input allows arbitrary code execution",
+          message: "Unsafe dynamic evaluation allows arbitrary code execution",
           severity: "high",
           category: "security",
         });

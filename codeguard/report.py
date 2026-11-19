@@ -9,7 +9,7 @@ from typing import List
 from .models import Finding, Report
 from .rules.catalog import RULES
 
-EMOJI = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}
+EMOJI = {"critical": "[CRIT]", "high": "[HIGH]", "medium": "[MED]", "low": "[LOW]", "info": "[INFO]"}
 
 
 def _tests_line(t) -> str:
@@ -38,11 +38,11 @@ def to_markdown(r: Report, limit: int = 40) -> str:
         L.append(f"| {c} | {_arrow(sb['categories'][c], sb['categories'][c])} | {_arrow(sa['categories'][c], sa['categories'][c])} |")
     L.append("")
     if r.gate and not r.gate.get("passed", True):
-        L += ["> ❌ **Quality gate failed:** " + "; ".join(r.gate["reasons"]), ""]
+        L += ["> **Quality gate failed:** " + "; ".join(r.gate["reasons"]), ""]
     if r.fixes:
         L += ["## Fixes", ""]
         for f in r.fixes:
-            icon = "✅" if f.status == "accepted" else "↩️"
+            icon = "[OK]" if f.status == "accepted" else "[REVERTED]"
             L.append(f"- {icon} `{f.file}` ({f.method}): {', '.join(f.rules)} - {f.status}" + (f" - {f.detail}" if f.detail else ""))
         L.append("")
     L += [f"## Findings ({len(r.findings_after)})", ""]
@@ -53,7 +53,7 @@ def to_markdown(r: Report, limit: int = 40) -> str:
         if len(r.findings_after) > limit:
             L.append(f"\n_...and {len(r.findings_after) - limit} more in the JSON/HTML report._")
     else:
-        L.append("No findings. 🎉")
+        L.append("No findings.")
     if r.notes:
         L += ["", "## Notes", ""] + [f"- {n}" for n in r.notes]
     return "\n".join(L) + "\n"

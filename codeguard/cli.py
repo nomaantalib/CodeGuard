@@ -71,7 +71,7 @@ def _ui(a) -> int:
     st = Store(s.data_dir / "codeguard.db")
     local_key = st.create_key("local@codeguard.internal", "enterprise")
     url = f"http://{a.host}:{a.port}/?key={local_key}"
-    print(f"\n🛡️  CodeGuard v2 UI starting at: http://{a.host}:{a.port}")
+    print(f"\nCodeGuard v2 UI starting at: http://{a.host}:{a.port}")
     print(f"Opening browser to interactive dashboard...\n")
     try:
         webbrowser.open(url)

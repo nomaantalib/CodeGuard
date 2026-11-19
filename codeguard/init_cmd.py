@@ -26,14 +26,14 @@ use_external_tools = true
 
 PRE_COMMIT_HOOK = """#!/bin/sh
 # CodeGuard Pre-Commit Quality & Security Gate
-echo "🛡️  Running CodeGuard pre-commit check..."
+echo "[CodeGuard] Running pre-commit check..."
 codeguard review . --no-llm --fail-on high --fail-under 60
 STATUS=$?
 if [ $STATUS -ne 0 ]; then
-    echo "❌ CodeGuard gate failed. Review issues or fix them before committing."
+    echo "[CodeGuard] Gate failed. Review issues or fix them before committing."
     exit 1
 fi
-echo "✅ CodeGuard checks passed."
+echo "[CodeGuard] Checks passed."
 exit 0
 """
 

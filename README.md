@@ -1,4 +1,4 @@
-# 🛡️ CodeGuard — AI Code Review & Security Audit Agent
+# CodeGuard — AI Code Review & Security Audit Agent
 
 **Review before you deploy.**
 
@@ -540,4 +540,4 @@ See the `LICENSE` file in this repository for license terms.
 
 Use it after generating code, before opening a pull request, or before deploying a project. Let it identify suspicious areas, explain possible risks, run available checks and prepare fixes for your review.
 
-**Review before you deploy. 🛡️**
+**Review before you deploy.**

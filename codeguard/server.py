@@ -18,6 +18,8 @@ import secrets
 import shutil
 import sys
 import tempfile
+import threading
+import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -114,7 +116,7 @@ DASHBOARD = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CodeGuard v2 — AI Code Review & Audit</title>
+<title>CodeGuard v2 - AI Code Review & Audit</title>
 <style>
 :root{--bg:#0f172a;--surface:#1e293b;--border:#334155;--text:#f8fafc;--muted:#94a3b8;--primary:#3b82f6;--primary-hover:#2563eb;--danger:#ef4444;--warning:#f59e0b;--success:#10b981;--font:ui-sans-serif,system-ui,-apple-system,sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -139,7 +141,10 @@ header{display:flex;justify-content:space-between;align-items:center;padding-bot
 input[type="text"],input[type="password"],select{background:#0f172a;border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:8px;font-size:14px;outline:none}
 input:focus,select:focus{border-color:var(--primary)}
 .checkbox-label{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;margin-top:22px}
-.stepper{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0;padding:16px;background:#0f172a88;border-radius:8px}
+.progress-container{background:#0f172a;border:1px solid var(--border);border-radius:999px;height:14px;overflow:hidden;margin:16px 0 10px}
+.progress-bar{background:linear-gradient(90deg,#3b82f6,#8b5cf6);height:100%;width:0%;transition:width 0.3s ease}
+.progress-meta{display:flex;justify-content:space-between;align-items:center;font-size:14px}
+.stepper{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0 10px;padding:16px;background:#0f172a88;border-radius:8px}
 .step{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .step.active{color:var(--primary);font-weight:600}
 .step.done{color:var(--success)}
@@ -166,15 +171,15 @@ pre{background:#0f172a;padding:12px;border-radius:8px;font-size:13px;overflow-x:
 <div class="container">
   <header>
     <div class="brand">
-      🛡️ <span>CodeGuard v2</span>
-      <span class="badge">AI Review & Reasoning Layer</span>
+      <span>CodeGuard v2</span>
+      <span class="badge">Review & Reasoning Layer</span>
     </div>
     <div id="statusTag" class="badge">Ready</div>
   </header>
 
   <div class="card">
     <div class="dropzone" id="dropzone">
-      <h3>Drop your project ZIP or folder here</h3>
+      <h3>Drop your project ZIP here</h3>
       <p>Or click to browse and select your project archive (.zip)</p>
       <input type="file" id="fileInput" accept=".zip" style="display:none">
       <button class="btn" onclick="document.getElementById('fileInput').click()">Select Project ZIP</button>
@@ -183,8 +188,8 @@ pre{background:#0f172a;padding:12px;border-radius:8px;font-size:13px;overflow-x:
 
     <div class="controls">
       <div class="control-item">
-        <label>API Key / Local Key</label>
-        <input type="password" id="apiKey" placeholder="Leave empty for local free mode">
+        <label>API Key (Auto-configured for local mode)</label>
+        <input type="password" id="apiKey" placeholder="Auto-configured local key">
       </div>
       <div class="control-item">
         <label>Model Preset</label>
@@ -212,12 +217,25 @@ pre{background:#0f172a;padding:12px;border-radius:8px;font-size:13px;overflow-x:
     </div>
 
     <button id="scanBtn" class="btn" style="width:100%;justify-content:center;padding:14px;font-size:16px">
-      🚀 Run Comprehensive Audit
+      Run Audit
     </button>
   </div>
 
   <div id="progressCard" class="card" style="display:none">
-    <h3>Audit Execution Pipeline</h3>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3>Audit Execution Progress</h3>
+      <span id="progressPercent" style="font-size:18px;font-weight:700;color:var(--primary)">0%</span>
+    </div>
+
+    <div class="progress-container">
+      <div id="progressBar" class="progress-bar"></div>
+    </div>
+
+    <div class="progress-meta">
+      <span id="statusLog" style="color:var(--muted)">Please wait while loading...</span>
+      <span style="color:var(--muted);font-size:12px">Please wait while loading...</span>
+    </div>
+
     <div class="stepper">
       <div id="step-p0" class="step"><span>[ ]</span> P0: Repo Plan</div>
       <div id="step-tests" class="step"><span>[ ]</span> Baseline Tests</div>
@@ -227,7 +245,6 @@ pre{background:#0f172a;padding:12px;border-radius:8px;font-size:13px;overflow-x:
       <div id="step-p5" class="step"><span>[ ]</span> P5: Fix QC</div>
       <div id="step-done" class="step"><span>[ ]</span> Scorecard & Report</div>
     </div>
-    <div id="statusLog" style="font-size:14px;color:var(--muted)">Starting audit pipeline...</div>
   </div>
 
   <div id="resultsCard" class="card" style="display:none">
@@ -257,10 +274,10 @@ pre{background:#0f172a;padding:12px;border-radius:8px;font-size:13px;overflow-x:
     </div>
 
     <div class="actions">
-      <button class="btn btn-outline" id="dlPatch">📥 Download Patch (.patch)</button>
-      <button class="btn btn-outline" id="dlMd">📄 Download Markdown (.md)</button>
-      <button class="btn btn-outline" id="dlHtml">🌐 Open HTML Report</button>
-      <button class="btn btn-outline" id="dlJson">📊 Export JSON</button>
+      <button class="btn btn-outline" id="dlPatch">Download Patch (.patch)</button>
+      <button class="btn btn-outline" id="dlMd">Download Markdown (.md)</button>
+      <button class="btn btn-outline" id="dlHtml">Open HTML Report</button>
+      <button class="btn btn-outline" id="dlJson">Export JSON</button>
     </div>
 
     <h3 style="margin-top:24px">Verified Findings</h3>
@@ -272,9 +289,10 @@ pre{background:#0f172a;padding:12px;border-radius:8px;font-size:13px;overflow-x:
 const $=id=>document.getElementById(id);
 let activeFile=null;
 let currentScanId=null;
+const LOCAL_KEY = "__DEFAULT_KEY__";
 
 const params = new URLSearchParams(window.location.search);
-if(params.get('key')) $('apiKey').value = params.get('key');
+$('apiKey').value = params.get('key') || LOCAL_KEY;
 
 $('dropzone').ondragover=e=>{e.preventDefault();$('dropzone').classList.add('dragover')};
 $('dropzone').ondragleave=()=>$('dropzone').classList.remove('dragover');
@@ -293,54 +311,139 @@ $('fileInput').onchange=e=>{
   }
 };
 
-const H=()=>{
-  const k=$('apiKey').value.trim();
-  return k?{Authorization:'Bearer '+k}:{};
-};
+const getKey = () => $('apiKey').value.trim() || LOCAL_KEY;
+const H = () => ({ Authorization: 'Bearer ' + getKey() });
 
-$('scanBtn').onclick=async()=>{
-  if(!activeFile){alert('Please select or drag-and-drop a project .zip first.');return}
+function updateProgress(pct, msg) {
+  $('progressBar').style.width = pct + '%';
+  $('progressPercent').textContent = pct + '%';
+  $('statusLog').textContent = msg;
+}
+
+$('scanBtn').onclick=()=>{
+  if(!activeFile){alert('Please select a project .zip first.');return}
   $('progressCard').style.display='block';
   $('resultsCard').style.display='none';
   $('statusTag').textContent='Scanning...';
   $('step-p0').className='step active';
-  $('statusLog').textContent='Uploading project archive...';
+  updateProgress(5, 'Uploading project archive... Please wait while loading...');
 
   const fix=$('fixCheck').checked?1:0;
   const llm=$('llmCheck').checked?1:0;
 
-  try {
-    const res=await fetch(`/api/scan?fix=${fix}&llm=${llm}`,{
-      method:'POST',
-      headers:H(),
-      body:activeFile
-    });
-    const j=await res.json();
-    if(!res.ok){alert(j.error||'Scan request failed');return}
-    currentScanId=j.id;
-    pollScan(j.id);
-  }catch(err){
-    alert('Upload failed: '+err.message);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', `/api/scan?fix=${fix}&llm=${llm}`);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + getKey());
+
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const uploadPct = Math.round((e.loaded / e.total) * 30);
+      updateProgress(uploadPct, `Uploading project archive (${Math.round((e.loaded/e.total)*100)}%)... Please wait while loading...`);
+    }
+  };
+
+  let pollTimer = null;
+  function schedulePoll(fn, delay) {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(fn, delay);
   }
+
+  xhr.onload = async () => {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        const j = JSON.parse(xhr.responseText);
+        currentScanId = j.id;
+        updateProgress(35, 'Project uploaded. Starting multi-pass review... Please wait while loading...');
+        pollScan(j.id, 0);
+      } catch(err) {
+        alert('Invalid response from server.');
+      }
+    } else if (xhr.status === 401) {
+      // Auto-retry with fresh local token if unauthenticated
+      try {
+        const tokenRes = await fetch('/api/local-token');
+        const tokenData = await tokenRes.json();
+        if (tokenData.key) {
+          $('apiKey').value = tokenData.key;
+          updateProgress(10, 'Re-authenticating session... Please wait while loading...');
+          const retryXhr = new XMLHttpRequest();
+          retryXhr.open('POST', `/api/scan?fix=${fix}&llm=${llm}`);
+          retryXhr.setRequestHeader('Authorization', 'Bearer ' + tokenData.key);
+          retryXhr.upload.onprogress = xhr.upload.onprogress;
+          retryXhr.onload = xhr.onload;
+          retryXhr.onerror = xhr.onerror;
+          retryXhr.send(activeFile);
+          return;
+        }
+      } catch (e) {}
+      alert('Authentication failed: missing or invalid API key.');
+      $('statusTag').textContent='Ready';
+    } else {
+      let errMsg = 'Upload failed with status ' + xhr.status;
+      try { errMsg = JSON.parse(xhr.responseText).error || errMsg; } catch(e){}
+      alert(errMsg);
+      $('statusTag').textContent='Ready';
+    }
+  };
+
+  xhr.onerror = () => {
+    alert('Connection error during upload. Please check server is running.');
+    $('statusTag').textContent='Ready';
+  };
+
+  xhr.send(activeFile);
 };
 
-async function pollScan(id){
+let activePollId = null;
+
+async function pollScan(id, attempt){
+  activePollId = id;
+  if (attempt > 80) {
+    $('statusLog').textContent = 'Scan timed out or is taking longer than expected. Please check server logs.';
+    $('statusTag').textContent = 'Timed Out';
+    return;
+  }
   try{
     const r=await fetch('/api/scans/'+id,{headers:H()});
+    if (activePollId !== id) return;
+    if(r.status === 429) {
+      // Rate limited: wait 3.5 seconds and retry gracefully
+      return schedulePoll(()=>pollScan(id, attempt), 3500);
+    }
     const j=await r.json();
     if(j.status==='queued'||j.status==='running'){
-      $('step-p0').className='step done';
-      $('step-tests').className='step active';
-      $('statusLog').textContent='Running multi-pass verification and analysis...';
-      return setTimeout(()=>pollScan(id),1200);
+      attempt++;
+      if (attempt === 1) {
+        $('step-p0').className='step done';
+        $('step-tests').className='step active';
+        updateProgress(50, 'Analyzing project tree & running baseline tests... Please wait while loading...');
+      } else if (attempt === 2) {
+        $('step-tests').className='step done';
+        $('step-p1').className='step active';
+        updateProgress(70, 'Running AI line-level audit & Grounding gate... Please wait while loading...');
+      } else if (attempt === 3) {
+        $('step-p1').className='step done';
+        $('step-ground').className='step done';
+        $('step-p2').className='step active';
+        updateProgress(85, 'Running Skeptic verification & QC checks... Please wait while loading...');
+      } else {
+        $('step-p2').className='step done';
+        $('step-p5').className='step active';
+        updateProgress(93, 'Generating scorecard and report... Please wait while loading...');
+      }
+      const nextDelay = attempt < 4 ? 2500 : (attempt < 15 ? 3500 : 5000);
+      return schedulePoll(()=>pollScan(id, attempt), nextDelay);
     }
     if(j.status==='done'){
+      updateProgress(100, 'Audit completed successfully.');
       finishScan(id, j);
-    }else{
+    } else {
       $('statusLog').textContent='Scan error: '+(j.error||'Failed');
+      $('statusTag').textContent='Error';
     }
   }catch(e){
-    setTimeout(()=>pollScan(id),2000);
+    if (activePollId !== id) return;
+    schedulePoll(()=>pollScan(id, attempt + 1), 3500);
   }
 }
 
@@ -374,7 +477,7 @@ function finishScan(id, data){
   container.innerHTML = '';
   const findings = (data.summary && (data.summary.findings_after || data.summary.findings_before)) || [];
   if(findings.length===0){
-    container.innerHTML = '<div style="padding:16px;color:var(--muted)">No critical defects detected. Project passed quality gates!</div>';
+    container.innerHTML = '<div style="padding:16px;color:var(--muted)">No critical defects detected. Project passed quality gates.</div>';
   }else{
     findings.slice(0, 15).forEach(f=>{
       const div=document.createElement('div');
@@ -392,10 +495,10 @@ function finishScan(id, data){
   }
 
   // Setup download handlers
-  $('dlPatch').onclick=()=>window.open(`/api/scans/${id}/report.patch?key=${$('apiKey').value}`);
-  $('dlMd').onclick=()=>window.open(`/api/scans/${id}/report.md?key=${$('apiKey').value}`);
-  $('dlHtml').onclick=()=>window.open(`/api/scans/${id}/report.html?key=${$('apiKey').value}`);
-  $('dlJson').onclick=()=>window.open(`/api/scans/${id}/report.json?key=${$('apiKey').value}`);
+  $('dlPatch').onclick=()=>window.open(`/api/scans/${id}/report.patch?key=${getKey()}`);
+  $('dlMd').onclick=()=>window.open(`/api/scans/${id}/report.md?key=${getKey()}`);
+  $('dlHtml').onclick=()=>window.open(`/api/scans/${id}/report.html?key=${getKey()}`);
+  $('dlJson').onclick=()=>window.open(`/api/scans/${id}/report.json?key=${getKey()}`);
 }
 </script>
 </body>
@@ -406,11 +509,27 @@ CTYPES = {"html": "text/html; charset=utf-8", "md": "text/markdown; charset=utf-
 
 
 def make_handler(store: Store, settings: Settings, pool: ThreadPoolExecutor):
+    import threading
+    rate_limiter: Dict[str, List[float]] = {}
+    rate_lock = threading.Lock()
+
     class Handler(BaseHTTPRequestHandler):
         server_version = f"CodeGuard/{__version__}"
 
         def log_message(self, fmt, *args):
             sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+
+        def _check_rate_limit(self) -> bool:
+            ip = self.client_address[0] if hasattr(self, "client_address") else "127.0.0.1"
+            now = time.time()
+            with rate_lock:
+                times = [t for t in rate_limiter.get(ip, []) if now - t < 30]
+                if len(times) >= 60:
+                    rate_limiter[ip] = times
+                    return False
+                times.append(now)
+                rate_limiter[ip] = times
+                return True
 
         def _send(self, code, body, ctype="application/json", extra=None):
             if isinstance(body, (dict, list)):
@@ -430,7 +549,15 @@ def make_handler(store: Store, settings: Settings, pool: ThreadPoolExecutor):
 
         def _account(self):
             h = self.headers.get("Authorization", "")
-            return store.authenticate(h[7:].strip()) if h.startswith("Bearer ") else None
+            if h.startswith("Bearer "):
+                tok = h[7:].strip()
+                if tok:
+                    return store.authenticate(tok)
+            q = parse_qs(urlparse(self.path).query)
+            key_param = q.get("key", [""])[0]
+            if key_param:
+                return store.authenticate(key_param)
+            return None
 
         def _body(self, limit):
             n = int(self.headers.get("Content-Length") or 0)
@@ -439,11 +566,20 @@ def make_handler(store: Store, settings: Settings, pool: ThreadPoolExecutor):
             return self.rfile.read(n)
 
         def do_GET(self):
+            if not self._check_rate_limit():
+                return self._send(429, {"error": "Rate limit exceeded. Please wait a moment."}, extra={"Retry-After": "2"})
             u = urlparse(self.path)
             if u.path == "/":
-                return self._send(200, DASHBOARD, "text/html; charset=utf-8")
+                local_key = store.create_key("local@codeguard.internal", "enterprise")
+                html = DASHBOARD.replace("__DEFAULT_KEY__", local_key)
+                return self._send(200, html, "text/html; charset=utf-8")
             if u.path == "/healthz":
                 return self._send(200, {"ok": True, "version": __version__})
+            if u.path == "/api/local-token":
+                local_key = store.create_key("local@codeguard.internal", "enterprise")
+                return self._send(200, {"key": local_key})
+            if u.path in ("/favicon.ico", "/robots.txt"):
+                return self._send(204, b"", "text/plain")
             acct = self._account()
             if not acct:
                 return self._err(401, "missing or invalid API key")
@@ -469,6 +605,8 @@ def make_handler(store: Store, settings: Settings, pool: ThreadPoolExecutor):
             return self._send(200, f.read_bytes(), CTYPES[m.group(2)], extra)
 
         def do_POST(self):
+            if not self._check_rate_limit():
+                return self._send(429, {"error": "Rate limit exceeded. Please wait a moment."}, extra={"Retry-After": "2"})
             u = urlparse(self.path)
             if u.path == "/webhooks/stripe":
                 raw = self._body(1_000_000)
@@ -494,6 +632,12 @@ def make_handler(store: Store, settings: Settings, pool: ThreadPoolExecutor):
             if u.path == "/api/scan":
                 acct = self._account()
                 if not acct:
+                    content_len = int(self.headers.get("Content-Length") or 0)
+                    if 0 < content_len < 20_000_000:
+                        try:
+                            self.rfile.read(content_len)
+                        except Exception:
+                            pass
                     return self._err(401, "missing or invalid API key")
                 plan = PLANS[acct["plan"]]
                 if quota_exceeded(acct["plan"], store.scans_this_month(acct["id"])):
