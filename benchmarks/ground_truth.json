@@ -1,0 +1,31 @@
+{
+  "version": "2.0.0",
+  "description": "Ground truth calibration benchmark for CodeGuard v2",
+  "cases": [
+    {
+      "file": "samples/eval_injection.py",
+      "expected_rules": ["PY001"],
+      "description": "Unsafe eval usage"
+    },
+    {
+      "file": "samples/hardcoded_secret.py",
+      "expected_rules": ["SEC001"],
+      "description": "Hardcoded AWS token secret"
+    },
+    {
+      "file": "samples/mutable_defaults.py",
+      "expected_rules": ["PY014"],
+      "description": "Dangerous mutable default argument"
+    },
+    {
+      "file": "samples/swallowed_error.py",
+      "expected_rules": ["PY009"],
+      "description": "Swallowed exception with bare pass"
+    },
+    {
+      "file": "samples/clean_code.py",
+      "expected_rules": [],
+      "description": "Clean control sample"
+    }
+  ]
+}
