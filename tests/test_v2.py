@@ -63,7 +63,8 @@ class CodeGuardV2Tests(unittest.TestCase):
         self.assertEqual(len(audit.superficial_tests), 0)
 
     def test_calibration_benchmark_passes(self):
-        p, r, f1 = run_benchmark()
+        bench_dir = Path(__file__).resolve().parent.parent / "benchmarks"
+        p, r, f1 = run_benchmark(bench_dir)
         self.assertGreaterEqual(f1, 0.80)
 
 

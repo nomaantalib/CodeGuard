@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CodeGuard v2 — Cloud Audit</title>
+<script src="https://unpkg.com/fflate@0.8.2/umd/index.js"></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+:root{--bg:#0f172a;--surface:#1e293b;--border:#334155;--text:#f8fafc;--muted:#94a3b8;--primary:#3b82f6}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,sans-serif;padding:24px}
+.container{max-width:880px;margin:0 auto}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin-top:20px}
+.btn{background:var(--primary);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:600;cursor:pointer}
+input,select{background:#0f172a;border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px;width:100%;margin-top:6px}
+.dropzone{border:2px dashed var(--border);border-radius:10px;padding:30px;text-align:center;cursor:pointer;margin:16px 0}
+.notice{padding:12px;border-radius:8px;background:#f59e0b22;border:1px solid #f59e0b55;color:#fbbf24;font-size:13px;margin:16px 0}
+pre{background:#0f172a;padding:12px;border-radius:8px;overflow-x:auto;margin-top:16px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🛡️ CodeGuard v2 (Cloudflare Edition)</h1>
+  <p style="color:var(--muted)">Serverless, client-side unzipped code review with Bring-Your-Own-Key (BYOK) privacy.</p>
+
+  <div class="notice">
+    ℹ️ <b>Cloud Notice:</b> As per security architecture, test subprocesses are NOT executed inside Cloudflare Workers. All deterministic rules & LLM passes run on your client-unzipped source files.
+  </div>
+
+  <div class="card">
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+      <h3>Select or Drop Project ZIP</h3>
+      <p id="fileStatus">ZIP is unzipped in your browser with fflate before scanning.</p>
+      <input type="file" id="fileInput" accept=".zip" style="display:none">
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <label style="font-size:13px;color:var(--muted)">LLM Provider</label>
+        <select id="provider">
+          <option value="workers-ai">Cloudflare Workers AI (Default)</option>
+          <option value="deepseek">DeepSeek (BYOK)</option>
+          <option value="openai">OpenAI (BYOK)</option>
+          <option value="openrouter">OpenRouter (BYOK)</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:13px;color:var(--muted)">BYOK API Key (Never stored or logged)</label>
+        <input type="password" id="byokKey" placeholder="Optional for Workers AI">
+      </div>
+    </div>
+
+    <div class="cf-turnstile" data-sitekey="0x4AAAAAA..." style="margin-top:16px"></div>
+    <button id="scanBtn" class="btn" style="margin-top:16px;width:100%">Run Cloud Audit</button>
+  </div>
+
+  <div id="resultsCard" class="card" style="display:none">
+    <h2>Audit Results</h2>
+    <div id="summary" style="margin:12px 0;font-weight:600"></div>
+    <pre id="output"></pre>
+  </div>
+</div>
+
+<script>
+let extractedFiles = {};
+
+document.getElementById('fileInput').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('fileStatus').textContent = 'Unzipping ' + file.name + ' in browser...';
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  fflate.unzip(buffer, (err, unzipped) => {
+    if (err) { alert('Failed to unzip file: ' + err.message); return; }
+    extractedFiles = {};
+    for (const [path, data] of Object.entries(unzipped)) {
+      if (!path.endsWith('/') && data.length < 500000) {
+        extractedFiles[path] = fflate.strFromU8(data);
+      }
+    }
+    document.getElementById('fileStatus').textContent = `Ready: ${Object.keys(extractedFiles).length} source files extracted in memory.`;
+  });
+};
+
+document.getElementById('scanBtn').onclick = async () => {
+  if (Object.keys(extractedFiles).length === 0) {
+    alert('Please choose and extract a ZIP file first.');
+    return;
+  }
+  document.getElementById('resultsCard').style.display = 'block';
+  document.getElementById('summary').textContent = 'Auditing project...';
+
+  const provider = document.getElementById('provider').value;
+  const byok = document.getElementById('byokKey').value;
+
+  try {
+    const res = await fetch('/api/scan', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-LLM-Provider': provider,
+        'X-BYOK-Key': byok,
+      },
+      body: JSON.stringify({ files: extractedFiles, run_llm: true }),
+    });
+    const data = await res.json();
+    document.getElementById('summary').textContent = `Score: ${data.score.overall} (${data.score.grade} - ${data.score.band})`;
+    document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    document.getElementById('output').textContent = 'Error: ' + err.message;
+  }
+};
+</script>
+</body>
+</html>

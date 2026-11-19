@@ -58,6 +58,39 @@ Plans live in `billing.PLANS` (free: 5 scans/mo, scan-only; pro: 200/mo + auto-f
 - [ ] Sandbox verified: run a scan of a project whose test tries network + file access; confirm it is contained
 - [ ] Privacy policy + terms: what code you store (reports only; uploads are deleted after the job), retention, subprocessors (configured LLM provider, Stripe)
 - [ ] Rotate `CODEGUARD_ADMIN_TOKEN`; keys are hashed so a DB leak does not leak keys
+
+---
+
+## 6. Cloudflare Pages + Workers Deployment (Serverless v2)
+
+For zero-server, global edge deployments, CodeGuard v2 includes a complete Cloudflare port under `cloudflare/`:
+
+### Prerequisites
+- Node.js 18+ and `npm install -g wrangler`
+- Cloudflare account with Workers & Pages enabled
+
+### Architecture Highlights
+- **In-Browser Unzip (`fflate`)**: Source files are extracted client-side in the browser before sending to the worker, avoiding server-side zip extraction limits.
+- **BYOK (Bring-Your-Own-Key)**: Users pass their own LLM API key (`X-BYOK-Key`), which is forwarded directly to the provider without ever being persisted or logged.
+- **Workers AI**: Defaults to Cloudflare's serverless AI catalog (e.g. `@cf/qwen/qwen2.5-coder-7b-instruct`).
+- **Reports with TTL**: Stored in Cloudflare KV / R2 with automatic 7-day expiration.
+- **Transparent Notice**: Because Cloudflare Workers cannot run arbitrary subprocesses, reports explicitly state: `"Tests not executed (Cloudflare Worker serverless sandbox limitation)"`.
+
+### Deployment Steps
+```bash
+cd cloudflare
+npm install
+
+# 1. Create KV Namespace for reports
+wrangler kv namespace create REPORTS_KV
+# Update wrangler.toml with the returned ID
+
+# 2. Deploy Worker API
+wrangler deploy
+
+# 3. Deploy Pages Frontend
+wrangler pages deploy public --project-name codeguard-web
+```
 - [ ] Rate limiting / WAF at the reverse proxy; backups of `CODEGUARD_DATA`
 - [ ] Monitor LLM spend per scan (`max_llm_files` caps it)
 

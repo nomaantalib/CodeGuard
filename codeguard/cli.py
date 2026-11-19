@@ -64,6 +64,30 @@ def _keys(a) -> int:
     return 0
 
 
+def _ui(a) -> int:
+    import webbrowser
+    from .server import serve, Settings, Store
+    s = Settings()
+    st = Store(s.data_dir / "codeguard.db")
+    local_key = st.create_key("local@codeguard.internal", "enterprise")
+    url = f"http://{a.host}:{a.port}/?key={local_key}"
+    print(f"\n🛡️  CodeGuard v2 UI starting at: http://{a.host}:{a.port}")
+    print(f"Opening browser to interactive dashboard...\n")
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+    serve(a.host, a.port)
+    return 0
+
+
+def _init(a) -> int:
+    from .init_cmd import init_project
+    init_project(Path(a.path))
+    print("CodeGuard v2 initialized successfully.")
+    return 0
+
+
 def _rules(a) -> int:
     from .report import rules_markdown
     print(rules_markdown())
@@ -90,6 +114,13 @@ def main(argv=None) -> int:
     r.add_argument("--fail-on", choices=SEVERITIES, help="exit 1 if any finding is at/above this severity")
     r.add_argument("--quiet", action="store_true")
     r.set_defaults(fn=_review)
+    ui_cmd = sub.add_parser("ui", help="launch interactive single-page dashboard in browser")
+    ui_cmd.add_argument("--host", default="127.0.0.1")
+    ui_cmd.add_argument("--port", type=int, default=8080)
+    ui_cmd.set_defaults(fn=_ui)
+    init_cmd = sub.add_parser("init", help="scaffold .codeguard config, pre-commit hook and CI workflow")
+    init_cmd.add_argument("path", nargs="?", default=".")
+    init_cmd.set_defaults(fn=_init)
     s = sub.add_parser("serve", help="run the HTTP API / dashboard")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8080)

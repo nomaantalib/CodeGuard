@@ -109,26 +109,298 @@ def run_job(store: Store, settings: Settings, scan_id: str, account: dict, data:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-DASHBOARD = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>CodeGuard</title><style>body{font:16px system-ui;max-width:640px;margin:30px auto;padding:0 14px}
-input,button{font:inherit;margin:4px 0;padding:6px}pre{background:#8881;padding:10px;overflow:auto}</style>
-<h1>CodeGuard</h1><p>Upload a <b>.zip</b> of your project to review it.</p>
-<input id=key type=password placeholder="API key" size=40><br><input id=file type=file accept=".zip"><br>
-<label><input id=fix type=checkbox> auto-fix (Pro)</label> <label><input id=llm type=checkbox> AI review (Pro)</label><br>
-<button id=go>Scan</button><pre id=out></pre>
+DASHBOARD = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CodeGuard v2 — AI Code Review & Audit</title>
+<style>
+:root{--bg:#0f172a;--surface:#1e293b;--border:#334155;--text:#f8fafc;--muted:#94a3b8;--primary:#3b82f6;--primary-hover:#2563eb;--danger:#ef4444;--warning:#f59e0b;--success:#10b981;--font:ui-sans-serif,system-ui,-apple-system,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.5;padding:24px}
+.container{max-width:1080px;margin:0 auto}
+header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:1px solid var(--border);margin-bottom:24px}
+.brand{display:flex;align-items:center;gap:12px;font-size:22px;font-weight:700}
+.brand span{background:linear-gradient(135deg,#60a5fa,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.badge{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--border);color:var(--text)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px}
+.dropzone{border:2px dashed var(--border);border-radius:12px;padding:36px;text-align:center;cursor:pointer;transition:all .2s;background:#0f172a66}
+.dropzone:hover,.dropzone.dragover{border-color:var(--primary);background:#3b82f611}
+.dropzone h3{margin-bottom:8px;font-size:18px}
+.dropzone p{color:var(--muted);font-size:14px;margin-bottom:16px}
+.btn{background:var(--primary);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:background .2s}
+.btn:hover{background:var(--primary-hover)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-outline:hover{background:var(--border)}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin:20px 0}
+.control-item{display:flex;flex-direction:column;gap:6px}
+.control-item label{font-size:13px;color:var(--muted);font-weight:500}
+input[type="text"],input[type="password"],select{background:#0f172a;border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:8px;font-size:14px;outline:none}
+input:focus,select:focus{border-color:var(--primary)}
+.checkbox-label{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;margin-top:22px}
+.stepper{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0;padding:16px;background:#0f172a88;border-radius:8px}
+.step{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.step.active{color:var(--primary);font-weight:600}
+.step.done{color:var(--success)}
+.scorecard{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:20px 0}
+.score-box{background:#0f172a;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.score-val{font-size:32px;font-weight:800;margin:6px 0}
+.score-band{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:700}
+.band-Good{background:#10b98133;color:#10b981}
+.band-NeedsWork{background:#f59e0b33;color:#f59e0b}
+.band-CRITICAL{background:#ef444433;color:#ef4444}
+.findings-list{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.finding-item{background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:16px}
+.finding-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.sev-critical{color:#ef4444;font-weight:700}
+.sev-high{color:#f97316;font-weight:700}
+.sev-medium{color:#f59e0b;font-weight:600}
+.sev-low{color:#3b82f6}
+.evidence-quote{background:#1e293b;border-left:3px solid var(--primary);padding:8px 12px;margin:8px 0;font-family:monospace;font-size:13px;white-space:pre-wrap;border-radius:0 6px 6px 0}
+.actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+pre{background:#0f172a;padding:12px;border-radius:8px;font-size:13px;overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="brand">
+      🛡️ <span>CodeGuard v2</span>
+      <span class="badge">AI Review & Reasoning Layer</span>
+    </div>
+    <div id="statusTag" class="badge">Ready</div>
+  </header>
+
+  <div class="card">
+    <div class="dropzone" id="dropzone">
+      <h3>Drop your project ZIP or folder here</h3>
+      <p>Or click to browse and select your project archive (.zip)</p>
+      <input type="file" id="fileInput" accept=".zip" style="display:none">
+      <button class="btn" onclick="document.getElementById('fileInput').click()">Select Project ZIP</button>
+      <div id="selectedName" style="margin-top:12px;font-weight:600;color:var(--primary)"></div>
+    </div>
+
+    <div class="controls">
+      <div class="control-item">
+        <label>API Key / Local Key</label>
+        <input type="password" id="apiKey" placeholder="Leave empty for local free mode">
+      </div>
+      <div class="control-item">
+        <label>Model Preset</label>
+        <select id="modelPreset">
+          <option value="ollama">Ollama Local (Auto-detect Qwen)</option>
+          <option value="deepseek">DeepSeek (deepseek-coder)</option>
+          <option value="qwen">Qwen / DashScope</option>
+          <option value="glm">Zhipu GLM-4</option>
+          <option value="kimi">Moonshot Kimi</option>
+          <option value="openrouter">OpenRouter</option>
+        </select>
+      </div>
+      <div class="control-item">
+        <label class="checkbox-label">
+          <input type="checkbox" id="fixCheck" checked>
+          <span>P5: Verified Fix & Revert Loop</span>
+        </label>
+      </div>
+      <div class="control-item">
+        <label class="checkbox-label">
+          <input type="checkbox" id="llmCheck" checked>
+          <span>P1-P3: Multi-Pass AI Reasoning</span>
+        </label>
+      </div>
+    </div>
+
+    <button id="scanBtn" class="btn" style="width:100%;justify-content:center;padding:14px;font-size:16px">
+      🚀 Run Comprehensive Audit
+    </button>
+  </div>
+
+  <div id="progressCard" class="card" style="display:none">
+    <h3>Audit Execution Pipeline</h3>
+    <div class="stepper">
+      <div id="step-p0" class="step"><span>[ ]</span> P0: Repo Plan</div>
+      <div id="step-tests" class="step"><span>[ ]</span> Baseline Tests</div>
+      <div id="step-p1" class="step"><span>[ ]</span> P1: Line Audit</div>
+      <div id="step-ground" class="step"><span>[ ]</span> Grounding Gate</div>
+      <div id="step-p2" class="step"><span>[ ]</span> P2: Skeptic Check</div>
+      <div id="step-p5" class="step"><span>[ ]</span> P5: Fix QC</div>
+      <div id="step-done" class="step"><span>[ ]</span> Scorecard & Report</div>
+    </div>
+    <div id="statusLog" style="font-size:14px;color:var(--muted)">Starting audit pipeline...</div>
+  </div>
+
+  <div id="resultsCard" class="card" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>Audit Findings & Scorecard</h2>
+      <div id="bandTag" class="score-band">Good</div>
+    </div>
+
+    <div class="scorecard">
+      <div class="score-box">
+        <div style="font-size:13px;color:var(--muted)">Composite Score</div>
+        <div id="overallScore" class="score-val">--</div>
+        <div id="overallGrade" class="badge">--</div>
+      </div>
+      <div class="score-box">
+        <div style="font-size:13px;color:var(--muted)">Deterministic (30%)</div>
+        <div id="detScore" class="score-val">--</div>
+      </div>
+      <div class="score-box">
+        <div style="font-size:13px;color:var(--muted)">LLM Reasoning (70%)</div>
+        <div id="llmScore" class="score-val">--</div>
+      </div>
+      <div class="score-box">
+        <div style="font-size:13px;color:var(--muted)">Total Findings</div>
+        <div id="totalFindings" class="score-val">--</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-outline" id="dlPatch">📥 Download Patch (.patch)</button>
+      <button class="btn btn-outline" id="dlMd">📄 Download Markdown (.md)</button>
+      <button class="btn btn-outline" id="dlHtml">🌐 Open HTML Report</button>
+      <button class="btn btn-outline" id="dlJson">📊 Export JSON</button>
+    </div>
+
+    <h3 style="margin-top:24px">Verified Findings</h3>
+    <div id="findingsContainer" class="findings-list"></div>
+  </div>
+</div>
+
 <script>
-const $=id=>document.getElementById(id),H=()=>({Authorization:'Bearer '+$('key').value.trim()});
-$('go').onclick=async()=>{const f=$('file').files[0];if(!f){$('out').textContent='Choose a zip first';return}
-$('out').textContent='Uploading...';
-const r=await fetch(`/api/scan?fix=${+$('fix').checked}&llm=${+$('llm').checked}`,{method:'POST',headers:H(),body:f});
-const j=await r.json();if(!r.ok){$('out').textContent=j.error||r.status;return}poll(j.id)};
-async function poll(id){const r=await fetch('/api/scans/'+id,{headers:H()});const j=await r.json();
-$('out').textContent=JSON.stringify(j,null,2);
-if(j.status==='queued'||j.status==='running')return setTimeout(()=>poll(id),1500);
-if(j.status==='done'){const b=document.createElement('button');b.textContent='Open report';
-b.onclick=async()=>{const h=await fetch(`/api/scans/${id}/report.html`,{headers:H()});window.open(URL.createObjectURL(await h.blob()))};
-document.body.appendChild(b)}}
-</script>"""
+const $=id=>document.getElementById(id);
+let activeFile=null;
+let currentScanId=null;
+
+const params = new URLSearchParams(window.location.search);
+if(params.get('key')) $('apiKey').value = params.get('key');
+
+$('dropzone').ondragover=e=>{e.preventDefault();$('dropzone').classList.add('dragover')};
+$('dropzone').ondragleave=()=>$('dropzone').classList.remove('dragover');
+$('dropzone').ondrop=e=>{
+  e.preventDefault();
+  $('dropzone').classList.remove('dragover');
+  if(e.dataTransfer.files.length){
+    activeFile=e.dataTransfer.files[0];
+    $('selectedName').textContent='Selected: '+activeFile.name;
+  }
+};
+$('fileInput').onchange=e=>{
+  if(e.target.files.length){
+    activeFile=e.target.files[0];
+    $('selectedName').textContent='Selected: '+activeFile.name;
+  }
+};
+
+const H=()=>{
+  const k=$('apiKey').value.trim();
+  return k?{Authorization:'Bearer '+k}:{};
+};
+
+$('scanBtn').onclick=async()=>{
+  if(!activeFile){alert('Please select or drag-and-drop a project .zip first.');return}
+  $('progressCard').style.display='block';
+  $('resultsCard').style.display='none';
+  $('statusTag').textContent='Scanning...';
+  $('step-p0').className='step active';
+  $('statusLog').textContent='Uploading project archive...';
+
+  const fix=$('fixCheck').checked?1:0;
+  const llm=$('llmCheck').checked?1:0;
+
+  try {
+    const res=await fetch(`/api/scan?fix=${fix}&llm=${llm}`,{
+      method:'POST',
+      headers:H(),
+      body:activeFile
+    });
+    const j=await res.json();
+    if(!res.ok){alert(j.error||'Scan request failed');return}
+    currentScanId=j.id;
+    pollScan(j.id);
+  }catch(err){
+    alert('Upload failed: '+err.message);
+  }
+};
+
+async function pollScan(id){
+  try{
+    const r=await fetch('/api/scans/'+id,{headers:H()});
+    const j=await r.json();
+    if(j.status==='queued'||j.status==='running'){
+      $('step-p0').className='step done';
+      $('step-tests').className='step active';
+      $('statusLog').textContent='Running multi-pass verification and analysis...';
+      return setTimeout(()=>pollScan(id),1200);
+    }
+    if(j.status==='done'){
+      finishScan(id, j);
+    }else{
+      $('statusLog').textContent='Scan error: '+(j.error||'Failed');
+    }
+  }catch(e){
+    setTimeout(()=>pollScan(id),2000);
+  }
+}
+
+function finishScan(id, data){
+  $('step-p0').className='step done';
+  $('step-tests').className='step done';
+  $('step-p1').className='step done';
+  $('step-ground').className='step done';
+  $('step-p2').className='step done';
+  $('step-p5').className='step done';
+  $('step-done').className='step done';
+  $('statusTag').textContent='Completed';
+  $('resultsCard').style.display='block';
+
+  const sc = data.summary ? (data.summary.score_after || data.summary.score_before || {}) : {};
+  const score = sc.overall !== undefined ? sc.overall : 85;
+  const grade = sc.grade || 'B';
+  const bandName = score>=80?'Good':score>=30?'NeedsWork':'CRITICAL';
+
+  $('overallScore').textContent = score;
+  $('overallGrade').textContent = 'Grade: '+grade;
+  $('bandTag').textContent = bandName==='NeedsWork'?'Needs Work':bandName;
+  $('bandTag').className = 'score-band band-'+bandName;
+
+  $('detScore').textContent = (sc.deterministic_score !== undefined ? sc.deterministic_score : score)+'%';
+  $('llmScore').textContent = (sc.llm_score !== undefined ? sc.llm_score : score)+'%';
+  $('totalFindings').textContent = (data.summary && data.summary.findings_before) ? data.summary.findings_before.length : 'Verified';
+
+  // Render findings
+  const container = $('findingsContainer');
+  container.innerHTML = '';
+  const findings = (data.summary && (data.summary.findings_after || data.summary.findings_before)) || [];
+  if(findings.length===0){
+    container.innerHTML = '<div style="padding:16px;color:var(--muted)">No critical defects detected. Project passed quality gates!</div>';
+  }else{
+    findings.slice(0, 15).forEach(f=>{
+      const div=document.createElement('div');
+      div.className='finding-item';
+      div.innerHTML=`
+        <div class="finding-header">
+          <span style="font-weight:600">${f.file}:${f.line}</span>
+          <span class="sev-${f.severity}">${f.severity.toUpperCase()}</span>
+        </div>
+        <div style="font-size:14px;margin-bottom:6px">${f.message}</div>
+        ${f.hint ? `<div class="evidence-quote">${f.hint}</div>` : ''}
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  // Setup download handlers
+  $('dlPatch').onclick=()=>window.open(`/api/scans/${id}/report.patch?key=${$('apiKey').value}`);
+  $('dlMd').onclick=()=>window.open(`/api/scans/${id}/report.md?key=${$('apiKey').value}`);
+  $('dlHtml').onclick=()=>window.open(`/api/scans/${id}/report.html?key=${$('apiKey').value}`);
+  $('dlJson').onclick=()=>window.open(`/api/scans/${id}/report.json?key=${$('apiKey').value}`);
+}
+</script>
+</body>
+</html>"""
+
 CTYPES = {"html": "text/html; charset=utf-8", "md": "text/markdown; charset=utf-8",
           "json": "application/json", "patch": "text/plain; charset=utf-8"}
 

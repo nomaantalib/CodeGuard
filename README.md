@@ -93,11 +93,16 @@ CodeGuard only reports what its rules and tools can detect. It does not understa
 
 ---
 
-## 4. AI model: free local Qwen with Ollama
+## 4. AI model: free local Qwen with Ollama & Dynamic Selection
 
-CodeGuard's default AI provider is **Ollama**, with **Qwen2.5-Coder 3B** as the configured default model.
+CodeGuard automatically detects whichever model you have downloaded in Ollama (e.g. `qwen2.5-coder:1.5b`, `qwen2.5-coder:3b`, etc.), so you never have to worry about manual model mismatches.
 
-You can also select a smaller model for a low-memory computer.
+### Environment & Configuration Precedence
+1. **CLI Flag**: `codeguard review . --model qwen2.5-coder:1.5b`
+2. **Configuration file**: `codeguard.toml` (`model = "..."`)
+3. **Environment file**: `.env` (`CODEGUARD_MODEL=...` auto-loaded from project root)
+4. **Dynamic local auto-detection**: Probes Ollama and uses the best locally installed coding model.
+5. **Default**: `qwen2.5-coder:3b`
 
 ### Why Qwen and Ollama?
 
@@ -248,6 +253,30 @@ Run a normal review:
 
 ```bash
 codeguard review .
+```
+
+Specify a custom model (e.g. 1.5B or 3B):
+
+```bash
+codeguard review . --model qwen2.5-coder:1.5b
+```
+
+Launch the interactive single-page web UI:
+
+```bash
+codeguard ui
+```
+
+Initialize CodeGuard in any project (drops `.codeguard/` config, git pre-commit hook, and GitHub Action):
+
+```bash
+codeguard init
+```
+
+Run calibration benchmark (Precision, Recall, F1 against ground truth):
+
+```bash
+python benchmarks/runner.py
 ```
 
 Create reports in Markdown, JSON and HTML:

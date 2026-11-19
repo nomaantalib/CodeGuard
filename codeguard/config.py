@@ -11,7 +11,7 @@ DEFAULT_MODEL = "qwen2.5-coder:3b"
 DEFAULT_IGNORE = {
     ".git", "node_modules", "venv", ".venv", "env", "__pycache__", ".mypy_cache",
     ".pytest_cache", ".tox", "dist", "build", ".next", "coverage", "site-packages",
-    ".idea", ".vscode", "codeguard-report",
+    ".idea", ".vscode", "codeguard-report", "benchmarks",
 }
 
 
@@ -50,6 +50,9 @@ def load_env(root: Optional[Path] = None) -> None:
             os.environ[k] = v
     except Exception:
         pass
+
+
+load_env()
 
 
 @dataclass

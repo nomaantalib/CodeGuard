@@ -1,0 +1,30 @@
+name = "codeguard-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[ai]
+binding = "AI"
+
+# KV Namespace for temporary audit reports with TTL
+[[kv_namespaces]]
+binding = "REPORTS_KV"
+id = "YOUR_KV_NAMESPACE_ID"
+preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID"
+
+# R2 bucket for audit patches and reports
+[[r2_buckets]]
+binding = "REPORTS_R2"
+bucket_name = "codeguard-reports"
+
+[vars]
+ENVIRONMENT = "production"
+MAX_SUBREQUESTS = "50"
+TURNSTILE_SITE_KEY = "0x4AAAAAA..."
+
+# Rate Limiter binding
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }

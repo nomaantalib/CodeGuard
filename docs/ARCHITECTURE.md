@@ -29,9 +29,24 @@ Goal: keep it **simple and lenient** (stdlib only, one process, SQLite) while st
 | `fixer.py` | deterministic line fixers (+ import insertion after docstring/`__future__`) |
 | `llm.py` | Ollama native API (Qwen default), OpenAI-compatible providers and optional Anthropic via urllib; review + fix prompts |
 | `pipeline.py` | the orchestration above; owns the verify-or-revert policy |
-| `scoring.py` | per-category 0-100, weights security 35 / tests 25 / quality 15 / deps 15 / workflow 10 |
+| `scoring.py` | per-category 0-100, weights security 35 / tests 25 / quality 15 / deps 15 / workflow 10; composite 70% LLM + 30% deterministic |
+| `planner.py` | P0: Repo mapping, dependency discovery, risk-ranking, and dry-run token cost estimation |
+| `multipass.py` | P1: Numbered chunk auditing; Grounding Gate (quote verification); P2 Skeptic verification; P3 Cross-file & LLM-App suite |
+| `testaudit.py` | P4: Test assertion audit and reproduction test synthesis for confirmed defects |
+| `init_cmd.py` | `codeguard init` command: scaffolds .codeguard/ config, pre-commit hook, and GitHub Action |
+| `llm_client.py` | Unified LLM client with presets (Ollama, DeepSeek, Qwen, GLM, Kimi, OpenRouter, Anthropic), caching, retries, and budget tracking |
 | `report.py` | Markdown (PR comment), HTML (dark/light aware), JSON, patch |
-| `server.py`, `store.py`, `billing.py` | multi-tenant API: hashed API keys, monthly quotas, plan features, Stripe webhook |
+| `server.py`, `store.py`, `billing.py` | multi-tenant API & single-page dashboard: hashed API keys, monthly quotas, plan features, Stripe webhook |
+
+## CodeGuard v2 Reasoning & Review Pipeline
+1. **P0 Planning**: Discovers project tree, risk-ranks files, and computes dry-run token costs.
+2. **P1 Line-Level Audit**: Numbered source chunks analyzed for security, correctness, and robustness flaws.
+3. **Grounding Gate**: Drops any finding whose verbatim code quote does not exist in the source code at the cited lines.
+4. **P2 Skeptic Verification**: Adversarial staff engineer pass refutes false alarms (`confirmed`, `refuted`, `uncertain`).
+5. **P3 Cross-File & LLM-App Suite**: Analyzes multi-file auth flows and AI vulnerabilities (prompt injection, unvalidated model output).
+6. **P4 Test Audit**: Evaluates assertion density and synthesizes reproduction tests for confirmed defects.
+7. **P5 Fix & QC Sandbox**: Applies proposed changes in temporary throw-away worktree, verifies tests and syntax, and rescans.
+8. **P6 Honest Reporting & Dual-Engine Scoring**: 70% LLM reasoning + 30% deterministic evidence. Transparently documents "What Was NOT Checked".
 
 ## Safety model
 * **Temp workspace**: all edits and test runs happen in a copy. `--apply` is the only path that writes to your tree.

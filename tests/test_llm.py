@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch
 
@@ -7,12 +8,13 @@ from codeguard.llm import LLM, parse_review
 
 class LLMProviderTests(unittest.TestCase):
     def test_default_is_local_ollama_without_key(self):
+        expected_model = os.environ.get("CODEGUARD_MODEL", "qwen2.5-coder:3b")
         llm = LLM(Config())
         self.assertEqual(llm.provider, "ollama")
-        self.assertEqual(llm.model, "qwen2.5-coder:3b")
+        self.assertEqual(llm.model, expected_model)
         with patch("urllib.request.urlopen") as request:
             request.return_value.__enter__.return_value = __import__("io").BytesIO(
-                b'{"models":[{"name":"qwen2.5-coder:3b"}]}')
+                f'{{"models":[{{"name":"{expected_model}"}}]}}'.encode("utf-8"))
             self.assertTrue(llm.available)
 
     def test_openai_compatible_requires_key(self):
