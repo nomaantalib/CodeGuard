@@ -255,7 +255,10 @@ pre{background:#0f172a;padding:12px;border-radius:8px;font-size:13px;overflow-x:
       <span>CodeGuard v2</span>
       <span class="badge">Review & Reasoning Layer</span>
     </div>
-    <div id="statusTag" class="badge">Ready</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn btn-outline" style="font-size:12px;padding:4px 12px" onclick="resetAllAndReload()">New Audit</button>
+      <div id="statusTag" class="badge">Ready</div>
+    </div>
   </header>
 
   <div class="card">
@@ -933,9 +936,18 @@ function finishScan(id, data){
   $('dlJson').onclick=()=>window.open(`/api/scans/${id}/report.json?key=${getKey()}`);
 }
 
-// Restore active scan upon page reload
-restoreScanState();
-</script>
+function resetAllAndReload() {
+  clearScanState();
+  try { localStorage.clear(); } catch(e){}
+  window.location.href = '/?key=' + getKey() + '&fresh=1';
+}
+
+if (params.get('fresh') === '1') {
+  clearScanState();
+  try { localStorage.clear(); } catch(e){}
+} else {
+  restoreScanState();
+}
 </script>
 </body>
 </html>"""
@@ -1008,7 +1020,12 @@ def make_handler(store: Store, settings: Settings, pool: ThreadPoolExecutor):
             if u.path == "/":
                 local_key = store.create_key("local@codeguard.internal", "enterprise")
                 html = DASHBOARD.replace("__DEFAULT_KEY__", local_key)
-                return self._send(200, html, "text/html; charset=utf-8")
+                extra = {
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+                return self._send(200, html, "text/html; charset=utf-8", extra=extra)
             if u.path == "/healthz":
                 return self._send(200, {"ok": True, "version": __version__})
             if u.path == "/api/local-token":
@@ -1094,12 +1111,52 @@ def make_handler(store: Store, settings: Settings, pool: ThreadPoolExecutor):
     return Handler
 
 
+def free_port(host: str, port: int):
+    """If port is already in use by a previous instance, terminate it cleanly to allow restart."""
+    import socket
+    import subprocess
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        if s.connect_ex((host, port)) != 0:
+            return  # Port is free
+
+    current_pid = os.getpid()
+    if sys.platform == "win32":
+        try:
+            out = subprocess.check_output(f'netstat -ano | findstr :{port}', shell=True, text=True)
+            for line in out.splitlines():
+                if "LISTENING" in line and f":{port}" in line:
+                    parts = line.strip().split()
+                    pid = int(parts[-1])
+                    if pid != current_pid and pid > 4:
+                        subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+        except Exception:
+            pass
+    else:
+        try:
+            subprocess.run(f"fuser -k {port}/tcp", shell=True, capture_output=True)
+        except Exception:
+            pass
+
+    for _ in range(25):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex((host, port)) != 0:
+                break
+        time.sleep(0.1)
+
+
 def serve(host: str = "127.0.0.1", port: int = 8080):
+    free_port(host, port)
     settings = Settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     store = Store(settings.data_dir / "codeguard.db")
     pool = ThreadPoolExecutor(max_workers=settings.workers)
-    httpd = ThreadingHTTPServer((host, port), make_handler(store, settings, pool))
+
+    class ReusableServer(ThreadingHTTPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    httpd = ReusableServer((host, port), make_handler(store, settings, pool))
     print(f"CodeGuard {__version__} listening on http://{host}:{port}  (data: {settings.data_dir})", file=sys.stderr)
     if not settings.admin_token:
         print("warning: CODEGUARD_ADMIN_TOKEN not set - /admin/keys is disabled (use `codeguard keys`)", file=sys.stderr)

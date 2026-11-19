@@ -66,11 +66,12 @@ def _keys(a) -> int:
 
 def _ui(a) -> int:
     import webbrowser
-    from .server import serve, Settings, Store
+    from .server import serve, Settings, Store, free_port
+    free_port(a.host, a.port)
     s = Settings()
     st = Store(s.data_dir / "codeguard.db")
     local_key = st.create_key("local@codeguard.internal", "enterprise")
-    url = f"http://{a.host}:{a.port}/?key={local_key}"
+    url = f"http://{a.host}:{a.port}/?key={local_key}&fresh=1"
     print(f"\nCodeGuard v2 UI starting at: http://{a.host}:{a.port}")
     print(f"Opening browser to interactive dashboard...\n")
     try:
