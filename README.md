@@ -1,4 +1,4 @@
-ollama pull qwen2.5-coder:1.5b# 🛡️ CodeGuard — AI Code Review & Security Audit Agent
+# 🛡️ CodeGuard — AI Code Review & Security Audit Agent
 
 **Review before you deploy.**
 
