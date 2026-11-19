@@ -6,11 +6,50 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
+DEFAULT_MODEL = "qwen2.5-coder:3b"
+
 DEFAULT_IGNORE = {
     ".git", "node_modules", "venv", ".venv", "env", "__pycache__", ".mypy_cache",
     ".pytest_cache", ".tox", "dist", "build", ".next", "coverage", "site-packages",
     ".idea", ".vscode", "codeguard-report",
 }
+
+
+def load_env(root: Optional[Path] = None) -> None:
+    """Load environment variables from .env in target root, current directory, or package root."""
+    candidates = []
+    if root:
+        candidates.append(Path(root) / ".env")
+    candidates.append(Path.cwd() / ".env")
+    pkg_root = Path(__file__).resolve().parent.parent / ".env"
+    if pkg_root not in candidates:
+        candidates.append(pkg_root)
+
+    env_file = next((p for p in candidates if p.is_file()), None)
+    if not env_file:
+        return
+
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_file, override=False)
+        return
+    except ImportError:
+        pass
+
+    try:
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip()
+            if not k or k in os.environ:
+                continue
+            if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                v = v[1:-1]
+            os.environ[k] = v
+    except Exception:
+        pass
 
 
 @dataclass
@@ -19,7 +58,7 @@ class Config:
     max_file_kb: int = 512
     use_llm: bool = True  # local Ollama is the default; no paid API key required
     provider: str = field(default_factory=lambda: os.environ.get("CODEGUARD_LLM_PROVIDER", "ollama"))
-    model: str = field(default_factory=lambda: os.environ.get("CODEGUARD_MODEL", "qwen2.5-coder:3b"))
+    model: str = field(default_factory=lambda: os.environ.get("CODEGUARD_MODEL", DEFAULT_MODEL))
     llm_url: str = field(default_factory=lambda: os.environ.get("CODEGUARD_LLM_URL", "http://localhost:11434"))
     api_key: str = field(default_factory=lambda: os.environ.get("CODEGUARD_LLM_API_KEY", ""))
     max_llm_files: int = 15
@@ -38,6 +77,7 @@ class Config:
 
 
 def load_config(root: Path, overrides: Optional[Dict[str, Any]] = None) -> Config:
+    load_env(root)
     cfg = Config()
     f = Path(root) / "codeguard.toml"
     if f.is_file():

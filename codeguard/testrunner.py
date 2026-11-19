@@ -24,7 +24,7 @@ def unittest_args(files: List[str]) -> List[str]:
     mods = []
     for r in files:
         if r.endswith(".py") and TEST_RX.search(r):
-            parts = r[:-3].split("/")
+            parts = r[:-3].replace("\\", "/").split("/")
             if all(p.isidentifier() for p in parts):
                 mods.append(".".join(parts))
     return ["-q"] + mods if mods else ["discover", "-q"]

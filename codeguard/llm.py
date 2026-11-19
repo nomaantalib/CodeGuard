@@ -47,18 +47,78 @@ class LLM:
 
     @property
     def available(self) -> bool:
-        # Local Ollama needs no key; probe once so an absent server/model does not
-        # cause a long timeout for every source file in the repository.
+        # Local Ollama needs no key; probe once and dynamically resolve model so an absent
+        # server or mismatched model tag does not cause failures or long timeouts.
         if self.provider == "ollama":
-            try:
-                url = self.url if self.url.endswith("/api/tags") else self.url + "/api/tags"
-                with urllib.request.urlopen(url, timeout=2) as response:
-                    models = json.load(response).get("models", [])
-                return any(m.get("name") == self.model or
-                           m.get("name", "").startswith(self.model + ":") for m in models)
-            except Exception:
-                return False
+            return self._resolve_ollama_model()
         return bool(self.key)
+
+    def _resolve_ollama_model(self) -> bool:
+        """Verify model against local Ollama, dynamically selecting best installed match if needed."""
+        url = self.url if self.url.endswith("/api/tags") else self.url + "/api/tags"
+        try:
+            with urllib.request.urlopen(url, timeout=3) as response:
+                models = json.load(response).get("models", [])
+        except Exception:
+            return False
+
+        if not models:
+            return False
+
+        names = [m.get("name", "") for m in models if m.get("name")]
+        if not names:
+            return False
+
+        # 1. Exact match or prefix match (e.g. "qwen2.5-coder:1.5b" or "qwen2.5-coder:1.5b:latest")
+        for name in names:
+            if name == self.model or name.startswith(self.model + ":") or self.model.startswith(name + ":"):
+                self.model = name
+                return True
+            if ":" not in self.model and name.split(":")[0] == self.model:
+                self.model = name
+                return True
+
+        # 2. Dynamic auto-selection: requested model not downloaded; find best local coding model
+        preferred = [
+            "qwen2.5-coder:3b",
+            "qwen2.5-coder:1.5b",
+            "qwen2.5-coder:7b",
+            "qwen2.5-coder:0.5b",
+            "qwen2.5-coder:14b",
+            "qwen2.5-coder",
+            "deepseek-coder",
+            "codellama",
+            "codeqwen",
+            "starcoder",
+        ]
+
+        matched = None
+        for pref in preferred:
+            for name in names:
+                if name == pref or name.startswith(pref + ":") or name.startswith(pref):
+                    matched = name
+                    break
+            if matched:
+                break
+
+        if not matched:
+            for name in names:
+                if "coder" in name.lower() or "code" in name.lower():
+                    matched = name
+                    break
+
+        if not matched:
+            for name in names:
+                if "qwen" in name.lower():
+                    matched = name
+                    break
+
+        if not matched:
+            matched = names[0]
+
+        print(f"[codeguard] Model '{self.model}' not found in Ollama. Dynamically selected downloaded model '{matched}'.", file=sys.stderr)
+        self.model = matched
+        return True
 
     def complete(self, system: str, user: str, max_tokens: int = 8000) -> Optional[str]:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]

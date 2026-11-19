@@ -19,6 +19,7 @@ def _review(a) -> int:
         return 2
     try:
         cfg = load_config(root, {
+            "model": a.model,
             "use_llm": False if a.no_llm else None, "run_tests": False if a.no_tests else None,
             "use_external_tools": False if a.no_external else None, "sandbox": a.sandbox,
             "fail_under": a.fail_under, "fail_on": a.fail_on, "verify_each": False if a.fast else None})
@@ -77,6 +78,7 @@ def main(argv=None) -> int:
     r.add_argument("path", nargs="?", default=".")
     r.add_argument("--fix", action="store_true", help="try fixes in a temp copy; writes a verified patch")
     r.add_argument("--apply", action="store_true", help="also write verified fixes into the project (implies --fix)")
+    r.add_argument("--model", help="LLM model name (e.g. qwen2.5-coder:1.5b or qwen2.5-coder:3b)")
     r.add_argument("--no-llm", action="store_true")
     r.add_argument("--no-tests", action="store_true")
     r.add_argument("--no-external", action="store_true", help="skip bandit/ruff/pip-audit")

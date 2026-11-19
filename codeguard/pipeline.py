@@ -72,6 +72,10 @@ def review(root, cfg: Config, fix: bool = False, apply: bool = False,
     llm_on = bool(llm and llm.available)
     if cfg.use_llm and not llm_on:
         notes.append("AI review/fix unavailable. Check the configured local Ollama service/model or provider credentials. Static rules and tests still ran.")
+    elif llm_on and llm:
+        if cfg.model != llm.model:
+            notes.append(f"AI: auto-selected installed Ollama model '{llm.model}' (requested '{cfg.model}')")
+            cfg.model = llm.model
 
     log("Scanning project...")
     before, inv, ctx = scanner.scan_project(root, cfg)
